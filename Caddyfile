@@ -1,0 +1,15 @@
+# Serves readsb's aircraft.json/stats.json (from --write-json) over HTTP at
+# /data/, which is what the readsb adapter polls (server/src/readsb.ts:
+# fetchAircraft/fetchStats hit {url}/data/aircraft.json and /data/stats.json).
+:80 {
+	root * /srv/readsb-data
+	file_server
+}
+
+# Public exposure of the daemon's realtime WebSocket event stream
+# (at.adsb.broadcast.subscribeEvents) is handled by the optional `cloudflared`
+# service in docker-compose.full.yml instead of a second site block here —
+# Cloudflare Tunnel terminates TLS at their edge and reaches the daemon
+# directly (http://daemon:4100), so this Caddy instance only ever needs to
+# serve readsb's JSON on the internal network. See
+# docs/HOSTING.md#exposing-your-station-publicly.
