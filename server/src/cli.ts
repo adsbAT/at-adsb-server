@@ -10,6 +10,7 @@ import { buildStationRecord, type StationRecordOptions } from "./records.js";
 import { buildDaemonConfig } from "./config.js";
 import { runDaemon } from "./daemon.js";
 import { runReadsbAdapter } from "./adapters/readsb.js";
+import { runMicheladaAdapter } from "./adapters/michelada.js";
 import { generateSigningKey, getSigningKeyDid, exportSigningKeyHex } from "./keys.js";
 import type { Credentials } from "./client.js";
 import { AtpAgent } from "@atproto/api";
@@ -306,6 +307,28 @@ adapter
     };
 
     await runReadsbAdapter(config);
+  });
+
+adapter
+  .command("michelada")
+  .description("Poll a michelada station's ADS-B API and stream data to the daemon.")
+  .option("--socket <path>", "Daemon Unix socket path (env: SOCKET_PATH)")
+  .option("--url <url>", "michelada HTTP base URL (env: MICHELADA_URL)")
+  .option("--source-id <id>", "Adapter source identifier (env: MICHELADA_SOURCE_ID)")
+  .option("--poll-interval <seconds>", "Poll interval in seconds (env: POLL_INTERVAL_S)", parseInt)
+  .option("--no-auto-start", "Do not switch the station into ADS-B mode (env: MICHELADA_AUTO_START=false)")
+  .action(async (opts) => {
+    const config = {
+      socketPath: opts.socket ?? process.env["SOCKET_PATH"] ?? "/tmp/at-adsb.sock",
+      micheladaUrl: opts.url ?? process.env["MICHELADA_URL"] ?? "http://localhost:8080",
+      // Deliberately not SOURCE_ID: sharing an id with the readsb adapter would
+      // make the daemon drop whichever adapter connected first.
+      sourceId: opts.sourceId ?? process.env["MICHELADA_SOURCE_ID"] ?? "michelada-1090",
+      pollIntervalS: opts.pollInterval ?? parseInt(process.env["POLL_INTERVAL_S"] ?? "1", 10),
+      autoStart: opts.autoStart && process.env["MICHELADA_AUTO_START"] !== "false",
+    };
+
+    await runMicheladaAdapter(config);
   });
 
 // pathToFileURL, not string interpolation: on Windows argv[1] is a drive path

@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { resolve, dirname } from "node:path";
 import type { MicheladaAircraft } from "../michelada.js";
 import {
   mapMicheladaAircraft,
@@ -314,3 +317,63 @@ describe("michelada adapter — stats", () => {
     expect(buildStatsMessage(0, 0)).toBeNull();
   });
 });
+
+describe("michelada adapter — CLI", () => {
+  it("registers `adapter michelada` with its flags", async () => {
+    const helpOutput = await execHelp(["adapter", "michelada"]);
+
+    expect(helpOutput).toContain("--socket");
+    expect(helpOutput).toContain("--url");
+    expect(helpOutput).toContain("--source-id");
+    expect(helpOutput).toContain("--poll-interval");
+    expect(helpOutput).toContain("--no-auto-start");
+    expect(helpOutput).toContain("MICHELADA_URL");
+  }, 30_000);
+
+  it("lists michelada alongside readsb under `adapter`", async () => {
+    const helpOutput = await execHelp(["adapter"]);
+
+    expect(helpOutput).toContain("michelada");
+    expect(helpOutput).toContain("readsb");
+  }, 30_000);
+});
+
+const serverDir = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+// Run tsx's entry point through node rather than the .bin shim, which is a
+// shell script on POSIX and a .cmd on Windows (spawn rejects the latter).
+const tsxCli = resolve(serverDir, "node_modules/tsx/dist/cli.mjs");
+
+async function execHelp(args: Array<string>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(process.execPath, [tsxCli, "src/cli.ts", ...args, "--help"], {
+      cwd: serverDir,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout?.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr?.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on("close", (code) => {
+      if (code === 0) {
+        resolve(stdout + stderr);
+      } else {
+        reject(new Error(`Command exited with code ${code}: ${stderr || stdout}`));
+      }
+    });
+
+    proc.on("error", reject);
+
+    setTimeout(() => {
+      proc.kill();
+      reject(new Error("Help command timed out"));
+    }, 25000);
+  });
+}
