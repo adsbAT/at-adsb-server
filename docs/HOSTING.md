@@ -67,10 +67,12 @@ All settings live in `.env`. Copy `.env.example` and fill in:
 | `ATP_PASSWORD` | yes | | App password (not your account password) |
 | `READSB_URL` | yes | `http://host.docker.internal:8080` | readsb HTTP API base URL |
 | `WS_PORT` | no | `4100` | WebSocket event stream port |
-| `BATCH_WINDOW_S` | no | `60` | Seconds between sighting publications |
+| `BATCH_WINDOW_S` | no | `15` | Seconds between sighting publications |
 | `STATS_INTERVAL_M` | no | `60` | Minutes between stats publications |
 | `QUEUE_DB_PATH` | no | `/data/at-adsb-queue.db` in Compose | SQLite publish retry queue path |
 | `POLL_INTERVAL_S` | no | `5` | How often the adapter polls readsb |
+| `STREAM_SIGNING_KEY_HEX` | no | | Private hex of secp256k1 stream signing keypair (generate with `generate-stream-key`) |
+| `STREAM_ENDPOINT` | no | | Public `wss://` URL for relay auto-discovery (see [Exposing your station](#exposing-your-station-publicly)) |
 | `BEAST_HOST` | no | | BEAST TCP host for raw frame capture |
 | `BEAST_PORT` | no | `30005` | BEAST TCP port |
 
@@ -112,6 +114,81 @@ docker compose logs -f adapter-readsb
 ```
 
 You should see the adapter polling every few seconds and the daemon publishing sighting records every `BATCH_WINDOW_S` seconds.
+
+## Exposing your station publicly
+
+The daemon broadcasts a realtime WebSocket event stream on port 4100. If you want relays and aggregators to discover and subscribe to your stream, you need to make it publicly reachable with a stable URL and set `STREAM_ENDPOINT`.
+
+This is **optional** — your station publishes sightings and flight records to the AT Protocol network regardless. The stream endpoint is for realtime consumers that want live data without polling.
+
+### Prerequisites
+
+- **A domain name** (or subdomain) with a DNS A/AAAA record pointing to your server's public IP address. Without a domain, you cannot get a TLS certificate, and `wss://` (secure WebSocket) requires TLS.
+- Ports **80** and **443** open on your server's firewall for TLS certificate provisioning and HTTPS traffic.
+- If you're behind a home router/NAT, forward ports 80, 443, and 4100 to your server's internal IP. Consider a dynamic DNS service if you don't have a static IP.
+
+### Using Caddy (recommended)
+
+[Caddy](https://caddyserver.com/) automatically provisions TLS certificates via Let's Encrypt and proxies WebSocket connections with no special configuration.
+
+1. Install Caddy on your host (not inside the Docker stack — it needs to bind ports 80/443):
+
+   ```bash
+   sudo apt install caddy
+   # or see https://caddyserver.com/docs/install
+   ```
+
+2. Edit the Caddyfile (usually `/etc/caddy/Caddyfile`):
+
+   ```caddyfile
+   adsb.yourdomain.com {
+       reverse_proxy localhost:4100
+   }
+   ```
+
+3. Reload Caddy:
+
+   ```bash
+   sudo systemctl reload caddy
+   ```
+
+   Caddy will obtain a TLS certificate on the first request. No manual cert management needed.
+
+4. Set `STREAM_ENDPOINT` in your `.env`:
+
+   ```bash
+   STREAM_ENDPOINT=wss://adsb.yourdomain.com/xrpc/at.adsb.broadcast.subscribeEvents
+   ```
+
+5. Restart the daemon:
+
+   ```bash
+   docker compose up -d
+   ```
+
+### Using a Cloudflare Tunnel (no open ports)
+
+If you can't open ports 80/443 (e.g., shared network, restrictive ISP), [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) provides a free reverse tunnel that needs no inbound ports:
+
+1. Install `cloudflared` and authenticate.
+2. Create a tunnel pointing `adsb.yourdomain.com` to `http://localhost:4100`.
+3. Set `STREAM_ENDPOINT` to `wss://adsb.yourdomain.com/xrpc/at.adsb.broadcast.subscribeEvents`.
+4. Restart the daemon.
+
+### Verify it works
+
+From another machine, test the WebSocket handshake:
+
+```bash
+curl -i -N \
+  -H "Connection: Upgrade" \
+  -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  https://adsb.yourdomain.com/xrpc/at.adsb.broadcast.subscribeEvents
+```
+
+You should see `HTTP/1.1 101 Switching Protocols`. If you get a 502 or connection refused, check that the daemon is running and the reverse proxy is forwarding to the correct port (4100 by default).
 
 ## Kubernetes (k3s)
 

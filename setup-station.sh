@@ -219,6 +219,7 @@ printf '%s\n' "  If your station's WebSocket is publicly reachable, enter the UR
 printf '%s\n' "  so relays can auto-discover your event stream."
 printf '%s\n' "  Example: wss://my-station.example.com/xrpc/at.adsb.broadcast.subscribeEvents"
 printf '%s\n' "  Leave empty if your station is not publicly accessible."
+printf '%s\n' "  See docs/HOSTING.md for reverse proxy setup (Caddy, Cloudflare Tunnel)."
 read_value "  Stream endpoint URL (optional, press Enter to skip): "
 STREAM_ENDPOINT=$REPLY
 if [ -n "$STREAM_ENDPOINT" ]; then
