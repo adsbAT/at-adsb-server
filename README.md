@@ -58,6 +58,40 @@ The station record must exist before the daemon starts. Coordinates are public A
 - **Source**: Clone, `cd server && npm ci && npm run build`, then `node dist/cli.js run`.
 - **Advanced configuration** (raw capture, multiple adapters, stream signing): See the [hosting guide](docs/HOSTING.md).
 
+## Stream Signing & Public Access
+
+The wizard can generate a stream signing key and set a public stream endpoint during setup. For existing stations that were set up without these:
+
+### Enable stream signing
+
+```bash
+docker compose run --rm daemon generate-stream-key
+```
+
+Copy the `STREAM_SIGNING_KEY_HEX=...` line from the output into your `.env`, then restart:
+
+```bash
+docker compose up -d
+```
+
+### Expose your station publicly (optional)
+
+If you want relays to discover and subscribe to your realtime event stream, you need a domain name and a reverse proxy with TLS. The simplest option is [Caddy](https://caddyserver.com/), which auto-provisions Let's Encrypt certificates:
+
+```caddyfile
+adsb.yourdomain.com {
+    reverse_proxy localhost:4100
+}
+```
+
+Then add to your `.env`:
+
+```bash
+STREAM_ENDPOINT=wss://adsb.yourdomain.com/xrpc/at.adsb.broadcast.subscribeEvents
+```
+
+This is optional — your station publishes sightings and flight records regardless. The stream endpoint is for realtime consumers. For full instructions including Cloudflare Tunnel (no open ports required), see the [hosting guide](docs/HOSTING.md#exposing-your-station-publicly).
+
 ## Lexicons
 
 The `at.adsb.*` lexicon namespace defines the protocol. Full schemas are in [`lexicons/`](lexicons/).
