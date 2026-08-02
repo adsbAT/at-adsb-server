@@ -10,7 +10,7 @@ and broadcasts a realtime ephemeral event stream over WebSocket.
 
 ## Contracts
 - **Exposes**: 
-  - CLI with `register` (station setup), `run` (daemon), and `adapter readsb` (readsb adapter process) commands
+  - CLI with `register` (station setup), `run` (daemon), `adapter readsb` and `adapter michelada` (adapter processes) commands
   - XRPC WebSocket subscription at `at.adsb.ephemeral.eventStream`
 - **Guarantees**:
   - Station record exists before daemon starts (fetched on `run` command startup)
@@ -43,7 +43,10 @@ and broadcasts a realtime ephemeral event stream over WebSocket.
 - **Boundary**: Record shapes are built in `records.ts` to match lexicon schemas; `stream.ts` is the exception -- it imports the eventStream lexicon JSON directly (required by xrpc-server for method registration); `readsb.ts` and `beast-client.ts` are now only imported by the `adapters/readsb.ts` adapter process, not the daemon
 
 ## Key Decisions
-- **Adapter architecture**: Unix domain socket protocol with adapter-per-decoder (e.g., `adapter readsb`, future `adapter dump978`). Each adapter connects independently, sending normalized aircraft messages. Daemon aggregates from multiple adapters.
+- **Adapter architecture**: Unix domain socket protocol with adapter-per-decoder (`adapter readsb`, `adapter michelada`, future `adapter dump978`). Each adapter connects independently, sending normalized aircraft messages. Daemon aggregates from multiple adapters.
+- **Explicit fix freshness**: `NormalizedAircraft.newPosition` lets an adapter that diffs snapshots state outright that a fix is new. michelada sets it; readsb omits it and the tracker keeps inferring freshness from a falling `seenPos`. Without it, back-to-back michelada fixes (both aged ~0s) would be indistinguishable from a repeated one and get dropped.
+- **Synthesized michelada fields**: michelada exposes only ICAO, callsign, lat/lon, heading, speed and seconds-since-last-message. The adapter derives fix age from when a reported position changed, counts polls with activity as a lower-bound message count, labels positions `adsb_icao`, and reports readsb's -49.5 dBFS floor for the RSSI it cannot measure. Altitude, squawk, category, vertical rate, QNH and NIC/Rc are omitted rather than faked.
+- **michelada owns one radio across modes**: the adapter asks the station to enter ADS-B mode when it finds it in another mode (at most every 30s, since calibration and the detector refuse the switch), and never switches it back on shutdown.
 - **Normalized message types**: `AircraftMessage`, `StatsMessage`, `RawCaptureMessage` (adapter-agnostic schema). Adapters convert decoder-specific formats to normalized types. No decoder-specific logic in daemon.
 - **Source attribution**: Telemetry blob positions carry `source` field (e.g., `adsb_icao`, `mlat`, `uat`). Sighting record `sources` array is deduplicated set of sources present in positions.
 - **ATRX concatenation for multi-source raw capture**: When multiple adapters provide raw frames, each ATRX blob is written to temp file, concatenated via `concatAtrxBlobs()`, and uploaded as single `rawCapture` blob. Parser reads sequentially until EOF.
@@ -86,6 +89,9 @@ and broadcasts a realtime ephemeral event stream over WebSocket.
   - `adapters/readsb.ts` (connects to readsb HTTP API, emits normalized messages)
   - `readsb.ts` (readsb HTTP client, data fetching)
   - `beast-client.ts` (BEAST TCP raw frame ingestion with reconnect; only used by readsb adapter)
+  - `adapters/michelada.ts` (polls a michelada station's `/extras/adsb` API, emits normalized messages; requests ADS-B mode when the station's radio is elsewhere)
+  - `adapters/michelada-mapping.ts` (Functional Core: diffs consecutive snapshots to derive fix freshness, message counts and per-poll stats)
+  - `michelada.ts` (michelada HTTP client: aircraft table plus ADS-B mode start/stop)
 
 ## Invariants
 - Every batch sighting has `windowStart`, `windowEnd`, `manifest` (non-empty), `telemetry` blob, `createdAt`, and optionally `rawCapture` blob
@@ -104,5 +110,6 @@ and broadcasts a realtime ephemeral event stream over WebSocket.
 - Queue `markFailed` silently returns if the row was deleted (race condition guard)
 - BeastClient accumulates raw bytes between flushes -- flush resets the buffer, so missed flushes lose frames (by design, not a bug)
 - AdapterServer accepts connections but doesn't authenticate -- assumes trusted local network (same machine or private LAN)
-- Multiple adapters with same sourceId will have telemetry merged; sourceId should be unique per adapter instance
+- Multiple adapters with same sourceId will have telemetry merged; sourceId should be unique per adapter instance. The michelada adapter reads `MICHELADA_SOURCE_ID`, not `SOURCE_ID`, so a shared `.env` cannot collide it with the readsb adapter
+- michelada sightings never carry a `rawCapture` blob -- the station has no BEAST output
 - ATRX temp files are written to `atrxTempDir` and cleaned up after upload; ensure directory is writable and has sufficient space

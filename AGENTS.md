@@ -18,7 +18,7 @@ Last verified: 2026-05-27
 - `docs/` - Hosting guide, specification, and verification docs
 - `tests/` - Shell wizard test
 - `setup-station.sh` - Interactive setup wizard
-- `docker-compose.yml` - Docker Compose for daemon + readsb adapter
+- `docker-compose.yml` - Docker Compose for daemon + readsb adapter (michelada adapter service commented out)
 
 ## Commands (from `server/`)
 - `npm run build` - Compile TypeScript
@@ -72,9 +72,13 @@ Last verified: 2026-05-27
   - `adapters/readsb.ts` (connects to readsb HTTP API, emits normalized messages)
   - `readsb.ts` (readsb HTTP client, data fetching)
   - `beast-client.ts` (BEAST TCP raw frame ingestion with reconnect; only used by readsb adapter)
+  - `adapters/michelada.ts` (polls a michelada station's `/extras/adsb` API, emits normalized messages)
+  - `adapters/michelada-mapping.ts` (Functional Core: snapshot diffing that derives fix freshness and message counts)
+  - `michelada.ts` (michelada HTTP client: aircraft table plus ADS-B mode start/stop)
 
 ## Key Decisions
-- **Adapter architecture**: Unix domain socket protocol with adapter-per-decoder (e.g., `adapter readsb`, future `adapter dump978`). Each adapter connects independently, sending normalized aircraft messages. Daemon aggregates from multiple adapters.
+- **Adapter architecture**: Unix domain socket protocol with adapter-per-decoder (`adapter readsb`, `adapter michelada`, future `adapter dump978`). Each adapter connects independently, sending normalized aircraft messages. Daemon aggregates from multiple adapters.
+- **Adapters may report fix freshness explicitly**: `NormalizedAircraft.newPosition` lets an adapter that diffs snapshots (michelada) state that a fix is new; adapters that report a true fix age (readsb) omit it and the tracker infers freshness from `seenPos` falling.
 - **Batch sightings**: positions accumulated in time windows, published as a single record with manifest + blob per window. Reduces write volume dramatically.
 - **Provenance chain via strongRef**: flight records reference batch sightings; flight records reference aircraft identity. Enables downstream verification without re-fetching telemetry.
 - **ATRX envelope format**: custom binary format for raw SDR frame capture. Designed for cryptographic provenance -- the raw demodulated frames can independently verify decoded telemetry.
@@ -93,3 +97,5 @@ Last verified: 2026-05-27
 - Receiver location extracted from station record at startup, must pass lat/lon validation
 - AdapterServer accepts connections but doesn't authenticate -- assumes trusted local network
 - Multiple adapters with same sourceId will have telemetry merged; sourceId should be unique per adapter instance
+- michelada reports no altitude, squawk, category, NIC/Rc, RSSI or message counter, and no raw frames; the adapter omits what it cannot know, reports readsb's -49.5 dBFS RSSI floor, and synthesizes a lower-bound message count from poll diffs
+- michelada shares its radio across modes: no aircraft are decoded unless the station is in ADS-B mode, which the adapter requests (at most every 30s) unless `--no-auto-start`

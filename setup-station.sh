@@ -281,6 +281,10 @@ if docker "${register_args[@]}"; then
   printf '%s\n' ""
   printf '%s\n' ".env was created at $ENV_FILE."
   printf '%s\n' "Start the stack with: docker compose up -d"
+  printf '%s\n' ""
+  printf '%s\n' "Feeding from a michelada station instead of readsb? Add"
+  printf '%s\n' "MICHELADA_URL=http://your-station:8080 to .env and start with:"
+  printf '%s\n' "  docker compose --profile michelada up -d daemon adapter-michelada"
 else
   status=$?
   printf '%s\n' 'Registration failed; .env remains available for retry.' >&2

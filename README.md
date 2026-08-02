@@ -1,6 +1,6 @@
 # at-adsb-server
 
-AT Protocol receiver daemon for publishing ADS-B aircraft surveillance data to the atmosphere. Accepts aircraft data from decoder adapters (readsb, and others), tracks aircraft through coverage, publishes batch sightings with cryptographic provenance, and broadcasts a realtime event stream over WebSocket.
+AT Protocol receiver daemon for publishing ADS-B aircraft surveillance data to the atmosphere. Accepts aircraft data from decoder adapters (readsb, michelada, and others), tracks aircraft through coverage, publishes batch sightings with cryptographic provenance, and broadcasts a realtime event stream over WebSocket.
 
 ## What This Is
 
@@ -13,7 +13,7 @@ Each receiver is a first-class AT Protocol identity with its own DID, making con
 ### Prerequisites
 
 - An Atmosphere account (e.g., a Bluesky account) and an [app password](https://bsky.app/settings/app-passwords)
-- A running [readsb](https://github.com/wiedehopf/readsb) instance (or compatible decoder exposing an HTTP aircraft API)
+- A running [readsb](https://github.com/wiedehopf/readsb) or [michelada](https://github.com/konradit/michelada) instance (or compatible decoder exposing an HTTP aircraft API)
 - Docker with Compose
 
 ### Setup
@@ -39,6 +39,14 @@ Each receiver is a first-class AT Protocol identity with its own DID, making con
    docker compose up -d
    docker compose logs -f daemon
    ```
+
+   Feeding from a [michelada](https://github.com/konradit/michelada) station instead? Set `MICHELADA_URL` in `.env` to your station's address and start its adapter instead of the readsb one:
+
+   ```bash
+   docker compose --profile michelada up -d daemon adapter-michelada
+   ```
+
+   See the [hosting guide](docs/HOSTING.md#adapter-michelada) for what that adapter can and cannot report.
 
 ### Manual Setup (without the wizard)
 

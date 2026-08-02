@@ -2,13 +2,13 @@
 
 at-adsb runs as two processes: a **daemon** that publishes to the AT Protocol network, and one or more **adapters** that feed aircraft data into it. They communicate over a Unix domain socket.
 
-This guide covers Docker Compose and Kubernetes (k3s) deployments. Both assume you already have a decoder like [readsb](https://github.com/wiedehopf/readsb) running somewhere accessible over HTTP.
+This guide covers Docker Compose and Kubernetes (k3s) deployments. Both assume you already have a decoder like [readsb](https://github.com/wiedehopf/readsb) or a [michelada](https://github.com/konradit/michelada) station running somewhere accessible over HTTP.
 
 ## Prerequisites
 
 - An AT Protocol account (e.g., on [bsky.social](https://bsky.social))
 - An [app password](https://bsky.app/settings/app-passwords) for that account
-- A running readsb instance (or any decoder with an HTTP JSON API)
+- A running readsb or michelada instance (or any decoder with an HTTP JSON API)
 - Docker and Docker Compose, or a Kubernetes cluster
 
 ## Architecture
@@ -26,7 +26,39 @@ This guide covers Docker Compose and Kubernetes (k3s) deployments. Both assume y
 └──────────────┘
 ```
 
-The daemon doesn't know or care what decoder you're using. Adapters handle the translation. Today only `adapter readsb` exists, but the socket protocol is open for future decoders.
+The daemon doesn't know or care what decoder you're using. Adapters handle the translation. Two adapters ship today — `adapter readsb` and `adapter michelada` — and the socket protocol is open for future decoders.
+
+### `adapter michelada`
+
+[michelada](https://github.com/konradit/michelada) is a CaribouLite SDR station with a built-in 1090 MHz ADS-B decoder under `/extras/adsb`. Point the adapter at the station's HTTP address and it feeds the daemon exactly like the readsb adapter:
+
+```bash
+node dist/cli.js adapter michelada \
+  --socket /tmp/at-adsb.sock \
+  --url http://michelada.local:8080
+```
+
+Under Compose, set `MICHELADA_URL` in `.env` and bring up the profile-gated service. For a michelada-only station, name the two services so the readsb adapter stays down:
+
+```bash
+docker compose --profile michelada up -d daemon adapter-michelada
+```
+
+michelada shares one radio between the spectrum analyser, FPV, the detector and ADS-B, so the decoder only runs while the station is in ADS-B mode. The adapter switches it into that mode on startup (and whenever it finds the station in another mode), retrying at most every 30s because calibration and the detector hold the radio exclusively. Pass `--no-auto-start`, or set `MICHELADA_AUTO_START=false`, to leave the radio under your control. The adapter never switches the station back out of ADS-B mode.
+
+michelada's API reports less than readsb's does, so sightings from it carry less detail:
+
+| Field | michelada |
+|-------|-----------|
+| ICAO hex, callsign, lat/lon, ground track, ground speed | decoded |
+| Altitude, squawk, category, vertical rate, NIC/Rc, QNH | not decoded — omitted from telemetry |
+| RSSI | not measured — reported as readsb's `-49.5` dBFS floor |
+| Message count | michelada exposes no counter; the adapter counts polls in which the aircraft was active, a lower bound |
+| Position timestamps | derived from when the reported position changed, accurate to the poll interval |
+| Raw frame capture (ATRX) | not available — michelada has no BEAST output, so sightings have no `rawCapture` blob |
+
+Positions are labelled `adsb_icao` in telemetry, the same label readsb uses for fixes off the aircraft's own transponder.
+
 
 ## Docker Compose
 
@@ -65,7 +97,10 @@ All settings live in `.env`. Copy `.env.example` and fill in:
 | `ATP_SERVICE` | yes | `https://bsky.social` | Your PDS URL |
 | `ATP_HANDLE` | yes | | AT Protocol handle |
 | `ATP_PASSWORD` | yes | | App password (not your account password) |
-| `READSB_URL` | yes | `http://host.docker.internal:8080` | readsb HTTP API base URL |
+| `READSB_URL` | yes (readsb adapter) | `http://host.docker.internal:8080` | readsb HTTP API base URL |
+| `MICHELADA_URL` | yes (michelada adapter) | `http://localhost:8080` | michelada station HTTP base URL |
+| `MICHELADA_SOURCE_ID` | no | `michelada-1090` | Source id for the michelada adapter (must differ from other adapters') |
+| `MICHELADA_AUTO_START` | no | `true` | Switch the michelada station into ADS-B mode when it is in another mode |
 | `WS_PORT` | no | `4100` | WebSocket event stream port |
 | `BATCH_WINDOW_S` | no | `60` | Seconds between sighting publications |
 | `STATS_INTERVAL_M` | no | `60` | Minutes between stats publications |
@@ -96,7 +131,9 @@ To attach raw SDR frames to sighting records (for cryptographic provenance), unc
 
 ### Multiple adapters
 
-To run a second decoder (e.g., a 978 MHz UAT receiver), duplicate the `adapter-readsb` service in `docker-compose.yml` with a different name, `--source-id`, and `--url`. Both adapters connect to the same daemon socket. The daemon merges their data automatically — sighting records include a `sources` array showing which decoders contributed.
+To run a second decoder (e.g., a 978 MHz UAT receiver), duplicate the `adapter-readsb` service in `docker-compose.yml` with a different name, `--source-id`, and `--url`. `docker-compose.yml` also carries a commented-out `adapter-michelada` service to uncomment if you feed from a michelada station. Both adapters connect to the same daemon socket. The daemon merges their data automatically — sighting records include a `sources` array showing which decoders contributed.
+
+Give every adapter its own `--source-id`: the daemon replaces an existing connection when a second adapter hands over the same id, so a duplicate id silently drops one of them.
 
 ### Verify it's working
 
@@ -211,6 +248,11 @@ node dist/cli.js run --socket-path /tmp/at-adsb.sock
 node dist/cli.js adapter readsb \
   --socket /tmp/at-adsb.sock \
   --url http://localhost:8080
+
+# ...or feed from a michelada station instead
+node dist/cli.js adapter michelada \
+  --socket /tmp/at-adsb.sock \
+  --url http://michelada.local:8080
 ```
 
 Requires Node.js 22+.
@@ -220,6 +262,8 @@ Requires Node.js 22+.
 **Adapter can't connect to daemon socket.** The daemon creates the socket file on startup. If the adapter starts first, it'll retry with exponential backoff (1s, 2s, 4s... up to 60s). Check that both processes can access the same socket path.
 
 **No sighting records published.** The daemon only publishes when it has position data. If your readsb instance has no aircraft in range, the batch window flushes empty (by design). Check `docker compose logs adapter-readsb` to confirm the adapter is receiving aircraft from the decoder.
+
+**michelada adapter reports no aircraft.** The adapter logs `station is not in ADS-B mode` when michelada's radio is doing something else. With auto-start enabled it asks the station to switch every 30s, but michelada refuses while calibration or the detector owns the radio — stop those first. Note also that michelada only reports a position once it has decoded an even/odd CPR pair for an aircraft, so aircraft appear in its table before they have coordinates.
 
 **"Station record not found" on daemon start.** Run the `register` command first. The daemon expects a station record to already exist on your AT Protocol account.
 
