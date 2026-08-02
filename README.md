@@ -54,6 +54,7 @@ The station record must exist before the daemon starts. Coordinates are public A
 
 ### Other Deployment Options
 
+- **Full stack (readsb built from source)**: If you don't already have readsb running, [`docker-compose.full.yml`](docker-compose.full.yml) builds [wiedehopf/readsb](https://github.com/wiedehopf/readsb) from source alongside this daemon, with an nginx sidecar serving readsb's JSON output. See the file's header comment for prerequisites.
 - **Kubernetes**: See [`k3s-manifests/at-adsb.yaml`](k3s-manifests/at-adsb.yaml) for a Deployment + Service manifest.
 - **Source**: Clone, `cd server && npm ci && npm run build`, then `node dist/cli.js run`.
 - **Advanced configuration** (raw capture, multiple adapters, stream signing): See the [hosting guide](docs/HOSTING.md).

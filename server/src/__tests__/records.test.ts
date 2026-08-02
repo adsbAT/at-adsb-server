@@ -792,8 +792,8 @@ describe("records — flight, stats, and station record builders", () => {
       const record = buildStationRecord(opts, fixedNow);
 
       expect(record["displayName"]).toBe("Test Station");
-      expect((record["location"] as any).latitude).toBe(37.5);
-      expect((record["location"] as any).longitude).toBe(-122.5);
+      expect((record["location"] as any).latitude).toBe("37.5");
+      expect((record["location"] as any).longitude).toBe("-122.5");
       expect((record["location"] as any).$type).toBe("community.lexicon.location.geo");
       expect(record["status"]).toBe("at.adsb.receiver.station#active");
       expect(record["createdAt"]).toBe("2026-05-23T12:00:00.000Z");
@@ -811,7 +811,7 @@ describe("records — flight, stats, and station record builders", () => {
       const record = buildStationRecord(opts, fixedNow);
       const location = record["location"] as any;
 
-      expect(location.altitude).toBe(100);
+      expect(location.altitude).toBe("100");
       expect(location.name).toBe("Bay Area");
     });
 

@@ -196,10 +196,10 @@ export function buildStationRecord(
 
   const location: Record<string, unknown> = {
     $type: "community.lexicon.location.geo",
-    latitude: opts.latitude,
-    longitude: opts.longitude,
+    latitude: String(opts.latitude),
+    longitude: String(opts.longitude),
   };
-  if (opts.altitude !== undefined) location["altitude"] = opts.altitude;
+  if (opts.altitude !== undefined) location["altitude"] = String(opts.altitude);
   if (opts.locationName !== undefined) location["name"] = opts.locationName;
 
   const record: Record<string, unknown> = {

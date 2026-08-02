@@ -14,7 +14,7 @@ COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /build/server/dist ./dist
 COPY --from=build /build/lexicons /lexicons
-RUN mkdir -p /run/at-adsb /tmp/at-adsb-atrx && chown node:node /run/at-adsb /tmp/at-adsb-atrx
+RUN mkdir -p /run/at-adsb /tmp/at-adsb-atrx /data && chown node:node /run/at-adsb /tmp/at-adsb-atrx /data
 EXPOSE 4100
 USER node
 ENTRYPOINT ["tini", "--", "node", "dist/cli.js"]
