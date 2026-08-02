@@ -144,7 +144,10 @@ export class AircraftTracker {
         }
 
         if (ac.lat != null && ac.lon != null && ac.seenPos != null) {
-          const isNewFix = existing.lastSeenPos === null || ac.seenPos < existing.lastSeenPos;
+          // Adapters that diff snapshots know when a fix is new and say so;
+          // otherwise infer it from the reported fix age falling.
+          const isNewFix = ac.newPosition
+            ?? (existing.lastSeenPos === null || ac.seenPos < existing.lastSeenPos);
           if (isNewFix) {
             existing.positionCount++;
             existing.lastSeenPos = ac.seenPos;

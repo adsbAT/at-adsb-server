@@ -9,6 +9,10 @@ export type NormalizedAircraft = {
   readonly lat?: number;
   readonly lon?: number;
   readonly seenPos?: number;
+  // Set by adapters that know exactly when a fix arrived (because they diff
+  // consecutive snapshots) instead of leaving the tracker to infer it from a
+  // falling seenPos. Absent for adapters that report a true fix age.
+  readonly newPosition?: boolean;
   readonly altBaro?: number | "ground";
   readonly altGeom?: number;
   readonly gs?: number;
@@ -125,6 +129,13 @@ export function validateNormalizedAircraft(
     seenPos = seenPosVal;
   }
 
+  let newPosition: boolean | undefined;
+  const newPositionVal = obj["newPosition"];
+  if (newPositionVal !== undefined) {
+    if (typeof newPositionVal !== "boolean") return null;
+    newPosition = newPositionVal;
+  }
+
   let altBaro: number | "ground" | undefined;
   const altBaroVal = obj["altBaro"];
   if (altBaroVal !== undefined) {
@@ -211,6 +222,7 @@ export function validateNormalizedAircraft(
     ...(lat !== undefined && { lat }),
     ...(lon !== undefined && { lon }),
     ...(seenPos !== undefined && { seenPos }),
+    ...(newPosition !== undefined && { newPosition }),
     ...(altBaro !== undefined && { altBaro }),
     ...(altGeom !== undefined && { altGeom }),
     ...(gs !== undefined && { gs }),
