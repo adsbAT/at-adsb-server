@@ -194,12 +194,15 @@ export function buildStationRecord(
     hfdl: "at.adsb.receiver.station#hfdl",
   };
 
+  // community.lexicon.location.geo carries coordinates as decimal-degree
+  // strings: the atproto data model has no float type, so a PDS rejects the
+  // record outright if these go out as numbers.
   const location: Record<string, unknown> = {
     $type: "community.lexicon.location.geo",
-    latitude: opts.latitude,
-    longitude: opts.longitude,
+    latitude: String(opts.latitude),
+    longitude: String(opts.longitude),
   };
-  if (opts.altitude !== undefined) location["altitude"] = opts.altitude;
+  if (opts.altitude !== undefined) location["altitude"] = String(opts.altitude);
   if (opts.locationName !== undefined) location["name"] = opts.locationName;
 
   const record: Record<string, unknown> = {
