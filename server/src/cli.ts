@@ -3,6 +3,7 @@
 
 import 'dotenv/config';
 import { mkdir } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { createAgent, putRecord, getRecord } from "./client.js";
 import { buildStationRecord, type StationRecordOptions } from "./records.js";
@@ -307,6 +308,8 @@ adapter
     await runReadsbAdapter(config);
   });
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL, not string interpolation: on Windows argv[1] is a drive path
+// that never matches a file:// URL, so the CLI would parse no arguments at all.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   program.parse();
 }
