@@ -45,6 +45,34 @@ services:
       - daemon
     restart: unless-stopped
 
+  # Feeding from a michelada station (CaribouLite SDR): set MICHELADA_URL in
+  # .env and start with `docker compose --profile michelada up -d`. It mounts no
+  # ATRX volume -- michelada exposes no raw frame stream to capture.
+  # For a michelada-only station, start just these two:
+  #   docker compose --profile michelada up -d daemon adapter-michelada
+  adapter-michelada:
+    profiles: ["michelada"]
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    command:
+      - "adapter"
+      - "michelada"
+      - "--socket"
+      - "/run/at-adsb/daemon.sock"
+      - "--url"
+      - "${MICHELADA_URL:-http://host.docker.internal:8080}"
+      - "--source-id"
+      - "${MICHELADA_SOURCE_ID:-michelada-1090}"
+      - "--poll-interval"
+      - "${POLL_INTERVAL_S:-5}"
+    env_file: .env
+    volumes:
+      - socket:/run/at-adsb
+    depends_on:
+      - daemon
+    restart: unless-stopped
+
   # To add another adapter (e.g., dump978 UAT), duplicate the adapter-readsb
   # service with a different name, --source-id, and --url pointing to the
   # second decoder.
